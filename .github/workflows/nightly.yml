@@ -1,0 +1,88 @@
+name: Nightly Inference
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC daily
+  workflow_dispatch:        # Allow manual trigger
+
+jobs:
+  nightly-inference:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fetch fresh fire and weather data
+        env:
+          FIRMS_API_KEY: ${{ secrets.FIRMS_API_KEY }}
+        run: |
+          python -c "
+          from src.ingestion.firms import fetch_firms
+          from src.ingestion.openaq import fetch_openaq, CITIES
+          from src.ingestion.weather import fetch_weather
+          fetch_firms(days=3, output_path='data/raw/firms.csv')
+          fetch_openaq(days=3, output_path='data/raw/openaq.csv')
+          fetch_weather(CITIES, days=3, output_path='data/raw/weather.csv')
+          print('Data fetched successfully')
+          "
+
+      - name: Run inference for key cities
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI || 'sqlite:///mlflow.db' }}
+          FIRMS_API_KEY: ${{ secrets.FIRMS_API_KEY }}
+        run: |
+          python -c "
+          import json
+          from datetime import datetime
+          from src.serving.predict import predict
+
+          cities = {
+              'Toronto':       (43.65, -79.38),
+              'Vancouver':     (49.25, -123.12),
+              'Los Angeles':   (34.05, -118.24),
+              'Seattle':       (47.61, -122.33),
+              'New York':      (40.71, -74.01),
+          }
+
+          results = {'generated_at': datetime.utcnow().isoformat() + 'Z', 'predictions': {}}
+          for city, (lat, lon) in cities.items():
+              try:
+                  pred = predict(lat, lon)
+                  results['predictions'][city] = pred
+                  print(f'{city}: PM2.5={pred[\"pm25_estimate\"]:.1f}  Score={pred[\"advisory_score\"]}  Tier={pred[\"risk_tier\"]}')
+              except Exception as e:
+                  print(f'{city}: ERROR {e}')
+                  results['predictions'][city] = {'error': str(e)}
+
+          import pathlib
+          pathlib.Path('data/predictions').mkdir(parents=True, exist_ok=True)
+          with open('data/predictions/latest.json', 'w') as f:
+              json.dump(results, f, indent=2)
+          print('Predictions saved to data/predictions/latest.json')
+          "
+
+      - name: Commit predictions artifact
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data/predictions/latest.json || true
+          git diff --staged --quiet || git commit -m "chore: nightly inference $(date -u +'%Y-%m-%d')"
+          git push || echo "Nothing to push"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-predictions
+          path: data/predictions/latest.json
+          retention-days: 30

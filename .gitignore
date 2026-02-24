@@ -1,0 +1,49 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Data (DVC-managed)
+data/raw/*.csv
+data/features/*.csv
+data/reports/*.html
+data/predictions/*.json
+!data/predictions/latest.json
+
+# MLflow
+mlruns/
+mlflow.db
+test_mlflow.db
+
+# DVC
+.dvc/cache/
+.dvc/tmp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb

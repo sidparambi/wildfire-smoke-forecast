@@ -1,0 +1,65 @@
+stages:
+  ingest_firms:
+    cmd: python -m src.ingestion.firms
+    deps:
+      - src/ingestion/firms.py
+    outs:
+      - data/raw/firms.csv
+
+  ingest_openaq:
+    cmd: python -m src.ingestion.openaq
+    deps:
+      - src/ingestion/openaq.py
+    outs:
+      - data/raw/openaq.csv
+
+  ingest_weather:
+    cmd: python -m src.ingestion.weather
+    deps:
+      - src/ingestion/weather.py
+      - data/raw/openaq.csv
+    outs:
+      - data/raw/weather.csv
+
+  engineer_features:
+    cmd: >
+      python -c "
+      import pandas as pd;
+      from src.ingestion.openaq import CITIES;
+      from src.ingestion.firms import fetch_firms;
+      from src.ingestion.openaq import fetch_openaq;
+      from src.ingestion.weather import fetch_weather;
+      from src.features.engineer import build_features;
+      firms=pd.read_csv('data/raw/firms.csv',parse_dates=['acq_datetime']);
+      aq=pd.read_csv('data/raw/openaq.csv',parse_dates=['datetime']);
+      wx=pd.read_csv('data/raw/weather.csv',parse_dates=['datetime']);
+      build_features(aq,firms,wx,output_path='data/features/features.csv')
+      "
+    deps:
+      - src/features/engineer.py
+      - data/raw/firms.csv
+      - data/raw/openaq.csv
+      - data/raw/weather.csv
+    outs:
+      - data/features/features.csv
+
+  train:
+    cmd: python -m src.training.train
+    deps:
+      - src/training/train.py
+      - data/features/features.csv
+    params:
+      - train.test_size
+    metrics:
+      - data/metrics.json:
+          cache: false
+
+  select:
+    cmd: python -m src.training.select
+    deps:
+      - src/training/select.py
+      - src/training/train.py
+
+params:
+  - train:
+      test_size: 0.2
