@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: wildfire-smoke-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # DagsHub-hosted MLflow — set these in the Render dashboard
+      - key: MLFLOW_TRACKING_URI
+        sync: false
+      - key: MLFLOW_TRACKING_USERNAME
+        sync: false
+      - key: MLFLOW_TRACKING_PASSWORD
+        sync: false
+      # Optional: enables live FIRMS fire data in /predict
+      - key: FIRMS_API_KEY
+        sync: false
+      - key: PYTHONPATH
+        value: /app
+      - key: DRIFT_REPORT_PATH
+        value: /app/data/reports/drift_latest.html
